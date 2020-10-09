@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: 2010-09-09
+Metadata:
+  'AWS::CloudFormation::Designer':
+    b614520f-0c48-44a0-ba7d-2f1877577914:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 429
+        'y': 120
+      z: 0
+      embeds: []
+      isassociatedwith:
+        - 5de7186e-8d53-4134-abf7-15aad5ed2a01
+    5de7186e-8d53-4134-abf7-15aad5ed2a01:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 590
+        'y': 120
+      z: 0
+      embeds: []
+    2ce1c9f5-eca5-4fac-b777-3a61cb7b89b8:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 500
+        'y': 220
+      z: 0
+      embeds: []
+      isassociatedwith:
+        - b614520f-0c48-44a0-ba7d-2f1877577914
+    aca9248d-9425-40e9-9629-4950a6ad2a7c:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 610
+        'y': 220
+      z: 0
+      embeds: []
+Resources:
+  ASG:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      VPCZoneIdentifier:
+        - subnet-04fc545b
+      LaunchConfigurationName: !Ref ASGLaunchConfig
+      MinSize: '1'
+      MaxSize: '3'
+      DesiredCapacity: '1'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: b614520f-0c48-44a0-ba7d-2f1877577914
+  ASGLaunchConfig:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      ImageId: ami-0947d2ba12ee1ff75
+      SecurityGroups:
+        - sg-7052444c
+      InstanceType: t2.micro
+      UserData: 
+        Fn::Base64:
+          !Sub |
+           #!/bin/bash -xe
+           sudo yum update -y
+           sudo yum install httpd -y
+           sudo systemctl start httpd
+           sudo systemctl enable httpd
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 5de7186e-8d53-4134-abf7-15aad5ed2a01
+  ASGPolicy:
+    Type: 'AWS::AutoScaling::ScalingPolicy'
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref ASG
+      ScalingAdjustment: '1'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 2ce1c9f5-eca5-4fac-b777-3a61cb7b89b8
+  CPUAlarmHigh:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      EvaluationPeriods: '2'
+      Statistic: Average
+      Threshold: '90'
+      AlarmDescription: Scale-up if CPU is greater than 90% for 10 minutes
+      MetricName: CPUUtilization
+      Period: '300'
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref ASGPolicy
+      Namespace: AWS/EC2
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref ASG
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: aca9248d-9425-40e9-9629-4950a6ad2a7c
