@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: 2010-09-09
+Metadata:
+  'AWS::CloudFormation::Designer':
+    b614520f-0c48-44a0-ba7d-2f1877577914:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 420
+        'y': 120
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 5de7186e-8d53-4134-abf7-15aad5ed2a01
+        - 43ae6cfe-14bb-40f6-a982-d8caf90a6257
+    5de7186e-8d53-4134-abf7-15aad5ed2a01:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 600
+        'y': 120
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - a622b020-ea60-43c1-8613-98e38ae4d788
+    2ce1c9f5-eca5-4fac-b777-3a61cb7b89b8:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 510
+        'y': 210
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - b614520f-0c48-44a0-ba7d-2f1877577914
+    aca9248d-9425-40e9-9629-4950a6ad2a7c:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 600
+        'y': 210
+      z: 1
+      embeds: []
+    43ae6cfe-14bb-40f6-a982-d8caf90a6257:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 190
+        'y': 150
+      z: 1
+      embeds: []
+    a622b020-ea60-43c1-8613-98e38ae4d788:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 300
+        'y': 70
+      z: 1
+      embeds: []
+Parameters:
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  KeyName:
+    Description: The EC2 Key Pair to allow SSH access to the instances
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+  SubnetId:
+    Description: List of Subnet IDs
+    Type: 'List<AWS::EC2::Subnet::Id>'
+Resources:
+  WebServerSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable SSH access and HTTP from the load balancer only
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          SourceSecurityGroupOwnerId:
+            'Fn::GetAtt':
+              - ElasticLoadBalancer
+              - SourceSecurityGroup.OwnerAlias
+          SourceSecurityGroupName:
+            'Fn::GetAtt':
+              - ElasticLoadBalancer
+              - SourceSecurityGroup.GroupName
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: a622b020-ea60-43c1-8613-98e38ae4d788
+  ASG:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      VPCZoneIdentifier:
+        Ref: SubnetId
+      LaunchConfigurationName: !Ref ASGLaunchConfig
+      MinSize: '1'
+      MaxSize: '3'
+      DesiredCapacity: '1'
+      LoadBalancerNames:
+        - Ref: ElasticLoadBalancer
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: b614520f-0c48-44a0-ba7d-2f1877577914
+  ASGLaunchConfig:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      KeyName:
+        Ref: KeyName
+      ImageId: 
+        Ref: LatestAmiId
+      SecurityGroups:
+        - !GetAtt WebServerSecurityGroup.GroupId
+      InstanceType: t2.micro
+      UserData:
+        'Fn::Base64': !Sub |
+          #!/bin/bash -xe
+          sudo yum update -y
+          sudo yum install httpd -y
+          sudo systemctl start httpd
+          sudo systemctl enable httpd
+          cd /var/www/html
+          touch index.html
+          echo "Test Web Server " > index.html
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 5de7186e-8d53-4134-abf7-15aad5ed2a01
+  ASGPolicy:
+    Type: 'AWS::AutoScaling::ScalingPolicy'
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref ASG
+      ScalingAdjustment: '1'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 2ce1c9f5-eca5-4fac-b777-3a61cb7b89b8
+  CPUAlarmHigh:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      EvaluationPeriods: '2'
+      Statistic: Average
+      Threshold: '90'
+      AlarmDescription: Scale-up if CPU is greater than 90% for 10 minutes
+      MetricName: CPUUtilization
+      Period: '300'
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref ASGPolicy
+      Namespace: AWS/EC2
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref ASG
+  ElasticLoadBalancer:
+    Type: 'AWS::ElasticLoadBalancing::LoadBalancer'
+    Properties:
+      AvailabilityZones: !GetAZs ''
+      CrossZone: 'true'
+      Listeners:
+        - LoadBalancerPort: '80'
+          InstancePort: '80'
+          Protocol: HTTP
+      HealthCheck:
+        Target: 'HTTP:80/'
+        HealthyThreshold: '3'
+        UnhealthyThreshold: '5'
+        Interval: '30'
+        Timeout: '5'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 43ae6cfe-14bb-40f6-a982-d8caf90a6257
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: aca9248d-9425-40e9-9629-4950a6ad2a7c
